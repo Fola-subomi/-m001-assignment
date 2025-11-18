@@ -2,7 +2,7 @@ use aiken/collection/list
 use cardano/transaction.{Mint, Transaction}
 
 // ============================================================================
-// DATUM (shared with spending validator)
+// DATUM
 // ============================================================================
 pub type LoyaltyDatum {
   customer: ByteArray,
@@ -14,35 +14,56 @@ pub type LoyaltyDatum {
 // ============================================================================
 // MINTING VALIDATOR
 // ============================================================================
-//
-// Rules:
-//   1. Only the merchant can mint loyalty tokens.
-//   2. The minted amount must equal the datum.token_amount.
-//   3. The positive direction of mint.value represents minting.
-//
 validator loyalty_mint {
-  mint(
-    redeemer: LoyaltyDatum,
-    _mint: Mint,
-    tx: Transaction,
-  ) {
+  mint(redeemer: LoyaltyDatum, mint_val: Mint, tx: Transaction) {
     let signatories = tx.extra_signatories
 
+    trace @"Mint path"
+
     // Rule 1: Merchant signature required
-    trace("Checking merchant signature for minting...")
-    expect True = list.has(signatories, redeemer.merchant)
+    expect list.has(signatories, redeemer.merchant)
 
     // Rule 2: Minted amount must match datum.token_amount
-    let mint_value = _mint.value
-
-    trace("Checking minted amount...")
-    expect redeemer.token_amount == mint_value
+    let value = mint_val.value
+    expect redeemer.token_amount == value
 
     True
   }
 
   else(_) {
-    trace("Minting validator failed")
+    trace @"Minting validator failed"
     fail
   }
+}
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+fn sample_customer() -> ByteArray {
+  #"aa"
+}
+
+fn sample_merchant() -> ByteArray {
+  #"bb"
+}
+
+fn sample_intruder() -> ByteArray {
+  #"cc"
+}
+
+fn sample_datum() -> LoyaltyDatum {
+  LoyaltyDatum {
+    customer: sample_customer(),
+    merchant: sample_merchant(),
+    token_amount: 500,
+    redeemed: False,
+  }
+}
+
+fn sample_transaction(signatories: List<ByteArray>) -> Transaction {
+  Transaction { ..placeholder, extra_signatories: signatories }
+}
+
+fn sample_mint(amount: Int) -> Mint {
+  Mint { value: amount }
 }

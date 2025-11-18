@@ -1,8 +1,8 @@
 use aiken/collection/list
-use cardano/transaction.{OutputReference, Transaction}
+use cardano/transaction.{Mint, OutputReference, Transaction}
 
 // ============================================================================
-// DATUM
+// SHARED DATUM
 // ============================================================================
 pub type LoyaltyDatum {
   customer: ByteArray,
@@ -12,7 +12,7 @@ pub type LoyaltyDatum {
 }
 
 // ============================================================================
-// REDEEMER
+// SPENDING REDEEMER
 // ============================================================================
 pub type LoyaltyRedeemer {
   Redeem
@@ -20,7 +20,7 @@ pub type LoyaltyRedeemer {
 }
 
 // ============================================================================
-// VALIDATOR
+// SPENDING VALIDATOR
 // ============================================================================
 validator loyalty {
   spend(
@@ -36,14 +36,12 @@ validator loyalty {
     when redeemer is {
       Redeem -> {
         trace @"Redeem path"
-        trace @"Checking customer signature..."
         expect list.has(signatories, datum.customer)
         True
       }
 
       Revoke -> {
         trace @"Revoke path"
-        trace @"Checking merchant signature..."
         expect list.has(signatories, datum.merchant)
         True
       }
@@ -51,7 +49,29 @@ validator loyalty {
   }
 
   else(_) {
-    trace @"Validator failed"
+    trace @"Loyalty spending validation failed"
+    fail
+  }
+}
+
+// ============================================================================
+// MINTING VALIDATOR
+// ============================================================================
+validator loyalty_mint {
+  mint(redeemer: LoyaltyDatum, mint_val: Mint, tx: Transaction) {
+    let signatories = tx.extra_signatories
+
+    trace @"Mint path"
+    expect list.has(signatories, redeemer.merchant)
+
+    let minted_amount = mint_val.value
+    expect minted_amount == redeemer.token_amount
+
+    True
+  }
+
+  else(_) {
+    trace @"Loyalty minting validation failed"
     fail
   }
 }
@@ -88,45 +108,76 @@ fn mock_utxo_ref(tx_id: Int, index: Int) -> OutputReference {
   OutputReference { transaction_id: tx_id, output_index: index }
 }
 
-// ============================================================================
-// MINIMAL TEST SUITE (3 TESTS TOTAL WITH TRACES)
-// ============================================================================
+fn sample_mint(amount: Int) -> Mint {
+  Mint { value: amount }
+}
 
-// ----------------------------------------------------------------------------
-// REDEEM SUCCESS (Customer)
-// ----------------------------------------------------------------------------
-test redeem_success_customer() {
-  trace @"TEST: redeem_success_customer starting"
+// ============================================================================
+// SPENDING TESTS
+// ============================================================================
+test redeem_success() {
+  trace @"TEST: redeem_success starting"
   let datum = Some(sample_datum())
-  let redeemer = Redeem
   let tx = sample_transaction([sample_customer()])
   let input = mock_utxo_ref(0, 0)
 
-  loyalty.spend(datum, redeemer, input, tx)
+  loyalty.spend(datum, Redeem, input, tx)
 }
 
-// ----------------------------------------------------------------------------
-// REVOKE SUCCESS (Merchant)
-// ----------------------------------------------------------------------------
-test revoke_success_merchant() {
-  trace @"TEST: revoke_success_merchant starting"
+test revoke_success() {
+  trace @"TEST: revoke_success starting"
   let datum = Some(sample_datum())
-  let redeemer = Revoke
   let tx = sample_transaction([sample_merchant()])
   let input = mock_utxo_ref(0, 0)
 
-  loyalty.spend(datum, redeemer, input, tx)
+  loyalty.spend(datum, Revoke, input, tx)
 }
 
-// ----------------------------------------------------------------------------
-// FAILURE TEST (Intruder attempts Redeem)
-// ----------------------------------------------------------------------------
-test failure_intruder_redeem() {
-  trace @"TEST: failure_intruder_redeem starting"
+test redeem_failure_intruder() {
+  trace @"TEST: redeem_failure_intruder starting"
   let datum = Some(sample_datum())
-  let redeemer = Redeem
   let tx = sample_transaction([sample_intruder()])
   let input = mock_utxo_ref(0, 0)
 
-  !loyalty.spend(datum, redeemer, input, tx)
+  !loyalty.spend(datum, Redeem, input, tx)
+}
+
+// ============================================================================
+// MINTING TESTS
+// ============================================================================
+test mint_success_correct_amount() {
+  trace @"TEST: mint_success_correct_amount starting"
+  let datum = sample_datum()
+  let tx = sample_transaction([sample_merchant()])
+  let mint_val = sample_mint(datum.token_amount)
+
+  loyalty_mint.mint(datum, mint_val, tx)
+}
+
+test mint_success_second_time() {
+  trace @"TEST: mint_success_second_time starting"
+  let datum = sample_datum()
+  let tx = sample_transaction([sample_merchant()])
+  let mint_val = sample_mint(datum.token_amount)
+
+  loyalty_mint.mint(datum, mint_val, tx)
+}
+
+test mint_failure_wrong_amount() {
+  trace @"TEST: mint_failure_wrong_amount starting"
+  let datum = sample_datum()
+  let tx = sample_transaction([sample_merchant()])
+  let mint_val = sample_mint(123)
+
+  // Wrong amount
+  !loyalty_mint.mint(datum, mint_val, tx)
+}
+
+test mint_failure_intruder() {
+  trace @"TEST: mint_failure_intruder starting"
+  let datum = sample_datum()
+  let tx = sample_transaction([sample_intruder()])
+  let mint_val = sample_mint(datum.token_amount)
+
+  !loyalty_mint.mint(datum, mint_val, tx)
 }
