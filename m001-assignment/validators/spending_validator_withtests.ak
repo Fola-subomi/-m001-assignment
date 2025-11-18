@@ -1,132 +1,152 @@
+// ============================================================================
+// COMBINED LOYALTY CONTRACT: SPENDING VALIDATOR & MINTING POLICY
+// ============================================================================
+// FIX APPLIED: Changed 'policy' keyword to 'validator ... using currency_symbol'
+// for the minting script to comply with modern Aiken versions.
+// ============================================================================
+
 use aiken/collection/list
-use cardano/transaction.{OutputReference, Transaction}
+use cardano/script_context.{ScriptContext, Transaction, extra_signatories, currency_symbol}
+use cardano/transaction.{OutputReference, placeholder}
+use mocktail.{mock_utxo_ref}
 
-// ============================================================================
-// DATUM
-// ============================================================================
-pub type LoyaltyDatum {
-  customer: ByteArray,
-  merchant: ByteArray,
-  token_amount: Int,
-  redeemed: Bool,
+// ----------------------------------------------------------------------------
+// DATUM - Data for the Spending Validator (Vesting)
+// ----------------------------------------------------------------------------
+pub type VestingDatum {
+  beneficiary: ByteArray,
 }
 
-// ============================================================================
-// REDEEMER
-// ============================================================================
-pub type LoyaltyRedeemer {
-  Redeem
-  Revoke
+// ----------------------------------------------------------------------------
+// SPENDING REDEEMER - Action for the Spending Validator
+// ----------------------------------------------------------------------------
+pub type VestingRedeemer {
+  Unlock
 }
 
-// ============================================================================
-// VALIDATOR
-// ============================================================================
-validator loyalty {
+// ----------------------------------------------------------------------------
+// 1. SPENDING VALIDATOR (The Vault)
+// ----------------------------------------------------------------------------
+validator vesting {
   spend(
-    datum_opt: Option<LoyaltyDatum>,
-    redeemer: LoyaltyRedeemer,
+    datum_opt: Option<VestingDatum>,
+    _redeemer: VestingRedeemer,
     _input: OutputReference,
     tx: Transaction,
   ) {
     expect Some(datum) = datum_opt
-
-    let signatories = tx.extra_signatories
-
-    when redeemer is {
-      Redeem -> {
-        trace @"Redeem path"
-        trace @"Checking customer signature..."
-        expect list.has(signatories, datum.customer)
-        True
-      }
-
-      Revoke -> {
-        trace @"Revoke path"
-        trace @"Checking merchant signature..."
-        expect list.has(signatories, datum.merchant)
-        True
-      }
-    }
+    let beneficiary_signed = list.has(tx.extra_signatories, datum.beneficiary)
+    
+    // Only requirement: beneficiary must sign
+    beneficiary_signed
   }
 
   else(_) {
-    trace @"Validator failed"
     fail
   }
 }
 
-// ============================================================================
-// TEST HELPERS
-// ============================================================================
-fn sample_customer() -> ByteArray {
-  #"aa"
+// ----------------------------------------------------------------------------
+// MINTING REDEEMER - Action for the Minting Policy
+// ----------------------------------------------------------------------------
+pub type MintingRedeemer {
+  Mint
 }
 
-fn sample_merchant() -> ByteArray {
-  #"bb"
+// ----------------------------------------------------------------------------
+// POLICY PARAMETERS - Parameter for the Minting Policy
+// ----------------------------------------------------------------------------
+pub type PolicyParams {
+  beneficiary: ByteArray,
+}
+
+// ----------------------------------------------------------------------------
+// 2. MINTING POLICY (The Token Controller) - CORRECTED SYNTAX
+// ----------------------------------------------------------------------------
+validator loyalty_minting(params: PolicyParams)
+  using currency_symbol // This specifies the validator is a Minting Policy
+{
+  mint(_redeemer: MintingRedeemer, context: ScriptContext) {
+    let tx: Transaction = context.transaction
+    let beneficiary_key: ByteArray = params.beneficiary
+    let signatories: List<ByteArray> = extra_signatories(tx)
+
+    // Only requirement: beneficiary must sign
+    list.has(signatories, beneficiary_key)
+  }
+}
+
+// ============================================================================
+// TEST SUITE - Helper Functions
+// ============================================================================
+
+fn sample_beneficiary() -> ByteArray {
+  #"aa"
 }
 
 fn sample_intruder() -> ByteArray {
   #"cc"
 }
 
-fn sample_datum() -> LoyaltyDatum {
-  LoyaltyDatum {
-    customer: sample_customer(),
-    merchant: sample_merchant(),
-    token_amount: 500,
-    redeemed: False,
-  }
+// SPENDING VALIDATOR TEST HELPERS
+fn sample_vesting_datum() -> VestingDatum {
+  VestingDatum { beneficiary: sample_beneficiary() }
 }
 
-fn sample_transaction(signatories: List<ByteArray>) -> Transaction {
+fn sample_spend_tx(signatories: List<ByteArray>) -> Transaction {
   Transaction { ..placeholder, extra_signatories: signatories }
 }
 
-fn mock_utxo_ref(tx_id: Int, index: Int) -> OutputReference {
-  OutputReference { transaction_id: tx_id, output_index: index }
+// MINTING POLICY TEST HELPERS
+fn sample_policy_params() -> PolicyParams {
+  PolicyParams { beneficiary: sample_beneficiary() }
+}
+
+fn sample_context(signatories: List<ByteArray>) -> ScriptContext {
+  let tx = Transaction {
+    ..placeholder,
+    extra_signatories: signatories,
+  }
+  ScriptContext {
+    transaction: tx,
+    purpose: cardano/script_context.Minting(currency_symbol(#"ab")),
+  }
 }
 
 // ============================================================================
-// MINIMAL TEST SUITE (3 TESTS TOTAL WITH TRACES)
+// TEST SUITE - SPENDING VALIDATOR TESTS
 // ============================================================================
 
-// ----------------------------------------------------------------------------
-// REDEEM SUCCESS (Customer)
-// ----------------------------------------------------------------------------
-test redeem_success_customer() {
-  trace @"TEST: redeem_success_customer starting"
-  let datum = Some(sample_datum())
-  let redeemer = Redeem
-  let tx = sample_transaction([sample_customer()])
+test spend_beneficiary_can_unlock() {
+  let datum = Some(sample_vesting_datum())
+  let redeemer = Unlock
+  let tx = sample_spend_tx([sample_beneficiary()])
   let input = mock_utxo_ref(0, 0)
-
-  loyalty.spend(datum, redeemer, input, tx)
+  vesting.spend(datum, redeemer, input, tx)
 }
 
-// ----------------------------------------------------------------------------
-// REVOKE SUCCESS (Merchant)
-// ----------------------------------------------------------------------------
-test revoke_success_merchant() {
-  trace @"TEST: revoke_success_merchant starting"
-  let datum = Some(sample_datum())
-  let redeemer = Revoke
-  let tx = sample_transaction([sample_merchant()])
+test spend_intruder_cannot_unlock() {
+  let datum = Some(sample_vesting_datum())
+  let redeemer = Unlock
+  let tx = sample_spend_tx([sample_intruder()])
   let input = mock_utxo_ref(0, 0)
-
-  loyalty.spend(datum, redeemer, input, tx)
+  !vesting.spend(datum, redeemer, input, tx)
 }
 
-// ----------------------------------------------------------------------------
-// FAILURE TEST (Intruder attempts Redeem)
-// ----------------------------------------------------------------------------
-test failure_intruder_redeem() {
-  trace @"TEST: failure_intruder_redeem starting"
-  let datum = Some(sample_datum())
-  let redeemer = Redeem
-  let tx = sample_transaction([sample_intruder()])
-  let input = mock_utxo_ref(0, 0)
+// ============================================================================
+// TEST SUITE - MINTING POLICY TESTS
+// ============================================================================
 
-  !loyalty.spend(datum, redeemer, input, tx)
+test mint_beneficiary_can_mint() {
+  let params = sample_policy_params()
+  let redeemer = Mint
+  let context = sample_context([sample_beneficiary()])
+  loyalty_minting.mint(params, redeemer, context)
+}
+
+test mint_intruder_cannot_mint() {
+  let params = sample_policy_params()
+  let redeemer = Mint
+  let context = sample_context([sample_intruder()])
+  !loyalty_minting.mint(params, redeemer, context)
 }

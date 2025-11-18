@@ -1,183 +1,94 @@
-use aiken/collection/list
-use cardano/transaction.{Mint, OutputReference, Transaction}
+// ============================================================================
+// VALIDATOR STRUCTURE - Educational Example
+// ============================================================================
+// This file demonstrates the anatomy of Aiken validators with both
+// spending and minting examples.
+// ============================================================================
 
-// ============================================================================
-// SHARED DATUM
-// ============================================================================
-pub type LoyaltyDatum {
-  customer: ByteArray,
-  merchant: ByteArray,
-  token_amount: Int,
-  redeemed: Bool,
+use cardano/transaction.{OutputReference, Transaction}
+
+// ----------------------------------------------------------------------------
+// SPENDING VALIDATOR EXAMPLE
+// ----------------------------------------------------------------------------
+
+// Custom types for the spending validator
+pub type VendingMachineDatum {
+  owner: ByteArray,
+  price_per_item: Int,
+  items_remaining: Int,
 }
 
-// ============================================================================
-// SPENDING REDEEMER
-// ============================================================================
-pub type LoyaltyRedeemer {
-  Redeem
-  Revoke
+pub type VendingMachineRedeemer {
+  Purchase { quantity: Int }
+  Restock { additional_items: Int }
+  Withdraw
 }
 
-// ============================================================================
-// SPENDING VALIDATOR
-// ============================================================================
-validator loyalty {
+// Spending validator: controls how UTxOs are spent
+// Parameters: datum, redeemer, input reference, transaction context
+validator vending_machine {
   spend(
-    datum_opt: Option<LoyaltyDatum>,
-    redeemer: LoyaltyRedeemer,
+    datum_opt: Option<VendingMachineDatum>,
+    redeemer: VendingMachineRedeemer,
     _input: OutputReference,
-    tx: Transaction,
+    _tx: Transaction,
   ) {
+    // Extract datum from Option type
     expect Some(datum) = datum_opt
-
-    let signatories = tx.extra_signatories
-
+    // Pattern match on redeemer to handle different actions
     when redeemer is {
-      Redeem -> {
-        trace @"Redeem path"
-        expect list.has(signatories, datum.customer)
+      Purchase { quantity } ->
+        // Check if enough items available
+        quantity <= datum.items_remaining
+      Restock { additional_items } ->
+        // Items to add must be positive
+        additional_items > 0
+      Withdraw ->
+        // Allow withdrawal
         True
-      }
-
-      Revoke -> {
-        trace @"Revoke path"
-        expect list.has(signatories, datum.merchant)
-        True
-      }
     }
   }
 
+  // Catch any other purpose (minting, staking, etc.)
   else(_) {
-    trace @"Loyalty spending validation failed"
     fail
   }
 }
 
-// ============================================================================
-// MINTING VALIDATOR
-// ============================================================================
-validator loyalty_mint {
-  mint(redeemer: LoyaltyDatum, mint_val: Mint, tx: Transaction) {
-    let signatories = tx.extra_signatories
+// ----------------------------------------------------------------------------
+// MINTING VALIDATOR EXAMPLE
+// ----------------------------------------------------------------------------
 
-    trace @"Mint path"
-    expect list.has(signatories, redeemer.merchant)
+// Custom type for minting redeemer
+pub type MintRedeemer {
+  TokenName { name: ByteArray }
+}
 
-    let minted_amount = mint_val.value
-    expect minted_amount == redeemer.token_amount
-
-    True
+// Minting validator: controls when tokens can be minted/burned
+// Parameters: redeemer, policy_id, transaction context
+validator nft_policy {
+  mint(redeemer: MintRedeemer, _policy_id: ByteArray, _tx: Transaction) {
+    // Extract token name from redeemer
+    let TokenName { name } = redeemer
+    // Token name must not be empty
+    name != ""
   }
 
+  // Catch any other purpose
   else(_) {
-    trace @"Loyalty minting validation failed"
     fail
   }
 }
-
 // ============================================================================
-// TEST HELPERS
+// KEY POINTS
 // ============================================================================
-fn sample_customer() -> ByteArray {
-  #"aa"
-}
-
-fn sample_merchant() -> ByteArray {
-  #"bb"
-}
-
-fn sample_intruder() -> ByteArray {
-  #"cc"
-}
-
-fn sample_datum() -> LoyaltyDatum {
-  LoyaltyDatum {
-    customer: sample_customer(),
-    merchant: sample_merchant(),
-    token_amount: 500,
-    redeemed: False,
-  }
-}
-
-fn sample_transaction(signatories: List<ByteArray>) -> Transaction {
-  Transaction { ..placeholder, extra_signatories: signatories }
-}
-
-fn mock_utxo_ref(tx_id: Int, index: Int) -> OutputReference {
-  OutputReference { transaction_id: tx_id, output_index: index }
-}
-
-fn sample_mint(amount: Int) -> Mint {
-  Mint { value: amount }
-}
-
+// 1. Validators must return Bool (True/False)
+// 2. Spending validators have 4 parameters: datum, redeemer, input, tx
+// 3. Minting validators have 3 parameters: redeemer, policy_id, tx
+// 4. Use 'expect' to safely extract from Option types
+// 5. Use 'when...is' for pattern matching on custom types
+// 6. Always include 'else(_) { fail }' clause
+// 7. Prefix unused parameters with underscore (_)
+// 8. Custom types used in validators must be marked 'pub' (public)
+// 9. Use 'let' for single-clause pattern matching instead of 'when'
 // ============================================================================
-// SPENDING TESTS
-// ============================================================================
-test redeem_success() {
-  trace @"TEST: redeem_success starting"
-  let datum = Some(sample_datum())
-  let tx = sample_transaction([sample_customer()])
-  let input = mock_utxo_ref(0, 0)
-
-  loyalty.spend(datum, Redeem, input, tx)
-}
-
-test revoke_success() {
-  trace @"TEST: revoke_success starting"
-  let datum = Some(sample_datum())
-  let tx = sample_transaction([sample_merchant()])
-  let input = mock_utxo_ref(0, 0)
-
-  loyalty.spend(datum, Revoke, input, tx)
-}
-
-test redeem_failure_intruder() {
-  trace @"TEST: redeem_failure_intruder starting"
-  let datum = Some(sample_datum())
-  let tx = sample_transaction([sample_intruder()])
-  let input = mock_utxo_ref(0, 0)
-
-  !loyalty.spend(datum, Redeem, input, tx)
-}
-
-// ============================================================================
-// MINTING TESTS
-// ============================================================================
-test mint_success_correct_amount() {
-  trace @"TEST: mint_success_correct_amount starting"
-  let datum = sample_datum()
-  let tx = sample_transaction([sample_merchant()])
-  let mint_val = sample_mint(datum.token_amount)
-
-  loyalty_mint.mint(datum, mint_val, tx)
-}
-
-test mint_success_second_time() {
-  trace @"TEST: mint_success_second_time starting"
-  let datum = sample_datum()
-  let tx = sample_transaction([sample_merchant()])
-  let mint_val = sample_mint(datum.token_amount)
-
-  loyalty_mint.mint(datum, mint_val, tx)
-}
-
-test mint_failure_wrong_amount() {
-  trace @"TEST: mint_failure_wrong_amount starting"
-  let datum = sample_datum()
-  let tx = sample_transaction([sample_merchant()])
-  let mint_val = sample_mint(123)
-
-  // Wrong amount
-  !loyalty_mint.mint(datum, mint_val, tx)
-}
-
-test mint_failure_intruder() {
-  trace @"TEST: mint_failure_intruder starting"
-  let datum = sample_datum()
-  let tx = sample_transaction([sample_intruder()])
-  let mint_val = sample_mint(datum.token_amount)
-
-  !loyalty_mint.mint(datum, mint_val, tx)
-}

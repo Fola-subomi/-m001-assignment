@@ -12,7 +12,12 @@ platform = "github"
 
 [[dependencies]]
 name = "aiken-lang/stdlib"
-version = "1.5.0"
+version = "v3.0.0"
+source = "github"
+
+[[dependencies]]
+name = "sidan-lab/vodka"
+version = "0.1.10"
 source = "github"
 
 [config]
