@@ -1,0 +1,124 @@
+{
+  "preamble": {
+    "title": "precious/m001-assignment",
+    "description": "Aiken contracts for project 'precious/m001-assignment'",
+    "version": "0.0.0",
+    "plutusVersion": "v3",
+    "compiler": {
+      "name": "Aiken",
+      "version": "v1.1.19+e525483"
+    },
+    "license": "Apache-2.0"
+  },
+  "validators": [
+    {
+      "title": "loyalty.vesting.spend",
+      "datum": {
+        "title": "datum_opt",
+        "schema": {
+          "$ref": "#/definitions/loyalty~1VestingDatum"
+        }
+      },
+      "redeemer": {
+        "title": "redeemer",
+        "schema": {
+          "$ref": "#/definitions/loyalty~1VestingRedeemer"
+        }
+      },
+      "compiledCode": "58d801010029800aba2aba1aab9faab9eaab9dab9a48888896600264646644b30013370e900118031baa00189919912cc004cdc3a400060126ea80162b3001300a375400b15980099b8748000c024dd5000c4c8cc88cc008008004896600200314a115980099b8f375c601e00200714a31330020023010001402c8070dd618069807180718071807180718071807180718059baa300d008375c601860146ea8c030c028dd5000c5900845900b45900818050009805180580098039baa0018b200a30070013007300800130070013003375400f149a26cac80081",
+      "hash": "ec431d8627829d7e21119161d909e8a9a15d648a67bff82ccafc3570"
+    },
+    {
+      "title": "loyalty.vesting.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "58d801010029800aba2aba1aab9faab9eaab9dab9a48888896600264646644b30013370e900118031baa00189919912cc004cdc3a400060126ea80162b3001300a375400b15980099b8748000c024dd5000c4c8cc88cc008008004896600200314a115980099b8f375c601e00200714a31330020023010001402c8070dd618069807180718071807180718071807180718059baa300d008375c601860146ea8c030c028dd5000c5900845900b45900818050009805180580098039baa0018b200a30070013007300800130070013003375400f149a26cac80081",
+      "hash": "ec431d8627829d7e21119161d909e8a9a15d648a67bff82ccafc3570"
+    },
+    {
+      "title": "loyalty_with_a_failed_test.vesting.spend",
+      "datum": {
+        "title": "datum_opt",
+        "schema": {
+          "$ref": "#/definitions/loyalty_with_a_failed_test~1VestingDatum"
+        }
+      },
+      "redeemer": {
+        "title": "redeemer",
+        "schema": {
+          "$ref": "#/definitions/loyalty_with_a_failed_test~1VestingRedeemer"
+        }
+      },
+      "compiledCode": "58ac01010029800aba2aba1aab9faab9eaab9dab9a48888896600264646644b30013370e900118031baa001899192cc004cdc3a400060106ea80122b30013009375400915980099b8748000c020dd518059806001466002b3001375860166018601860186018601860186018601860126ea8c02c01a2946294100a528528a00e8b200e8b20148b200e300a00130073754003164014600e002600e6010002600e00260066ea801e29344d95900101",
+      "hash": "5558e9c99a9f4a81f562123bd880ced6127508785393a26d0dca7fee"
+    },
+    {
+      "title": "loyalty_with_a_failed_test.vesting.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "58ac01010029800aba2aba1aab9faab9eaab9dab9a48888896600264646644b30013370e900118031baa001899192cc004cdc3a400060106ea80122b30013009375400915980099b8748000c020dd518059806001466002b3001375860166018601860186018601860186018601860126ea8c02c01a2946294100a528528a00e8b200e8b20148b200e300a00130073754003164014600e002600e6010002600e00260066ea801e29344d95900101",
+      "hash": "5558e9c99a9f4a81f562123bd880ced6127508785393a26d0dca7fee"
+    }
+  ],
+  "definitions": {
+    "ByteArray": {
+      "dataType": "bytes"
+    },
+    "loyalty/VestingDatum": {
+      "title": "VestingDatum",
+      "anyOf": [
+        {
+          "title": "VestingDatum",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": [
+            {
+              "title": "beneficiary",
+              "$ref": "#/definitions/ByteArray"
+            }
+          ]
+        }
+      ]
+    },
+    "loyalty/VestingRedeemer": {
+      "title": "VestingRedeemer",
+      "anyOf": [
+        {
+          "title": "Unlock",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": []
+        }
+      ]
+    },
+    "loyalty_with_a_failed_test/VestingDatum": {
+      "title": "VestingDatum",
+      "anyOf": [
+        {
+          "title": "VestingDatum",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": [
+            {
+              "title": "beneficiary",
+              "$ref": "#/definitions/ByteArray"
+            }
+          ]
+        }
+      ]
+    },
+    "loyalty_with_a_failed_test/VestingRedeemer": {
+      "title": "VestingRedeemer",
+      "anyOf": [
+        {
+          "title": "Unlock",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": []
+        }
+      ]
+    }
+  }
+}
